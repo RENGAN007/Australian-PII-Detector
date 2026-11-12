@@ -1,0 +1,9 @@
+[project]
+name = "aupii"
+version = "0.1.0"
+description = "Australian PII detector - portfolio project"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

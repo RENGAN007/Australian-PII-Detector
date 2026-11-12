@@ -1,0 +1,69 @@
+{
+  "seed": 13,
+  "negative_ratio": 0.15,
+  "template_fractions": {
+    "train": 0.6,
+    "val": 0.2,
+    "test": 0.2
+  },
+  "documents": {
+    "train": 6000,
+    "val": 1000,
+    "test": 1000
+  },
+  "templates": {
+    "train": [
+      "bank_02",
+      "company_01",
+      "invoice_02",
+      "invoice_03",
+      "invoice_04",
+      "medicare_02",
+      "medicare_03",
+      "medicare_04",
+      "neg_01",
+      "neg_03",
+      "neg_04",
+      "neg_05",
+      "neg_08",
+      "neg_09",
+      "onboard_02",
+      "onboard_03",
+      "passport_chat_01",
+      "payslip_01",
+      "payslip_02",
+      "rental_03",
+      "sms_01",
+      "sms_02",
+      "supplier_01",
+      "support_01",
+      "support_02",
+      "support_03",
+      "support_04",
+      "tax_02",
+      "travel_01"
+    ],
+    "val": [
+      "bank_01",
+      "bank_03",
+      "cv_01",
+      "invoice_01",
+      "list_01",
+      "neg_02",
+      "neg_07",
+      "rental_01",
+      "tax_01"
+    ],
+    "test": [
+      "company_02",
+      "identity_01",
+      "list_02",
+      "medicare_01",
+      "neg_06",
+      "neg_10",
+      "onboard_01",
+      "rental_02",
+      "rental_04"
+    ]
+  }
+}
