@@ -22,6 +22,7 @@ import json
 import random
 from pathlib import Path
 
+from aupii.generators import FIRST_NAMES, LAST_NAMES, STREET_NAMES, SUBURBS
 from aupii.labels import LABELS
 from aupii.synth import Renderer, template_labels
 from aupii.templates import NEGATIVE_TEMPLATES, PII_TEMPLATES, Template
@@ -53,15 +54,55 @@ def split_templates(templates: tuple[Template, ...], fractions: tuple[float, flo
     raise RuntimeError("could not find a split covering every label - add more templates")
 
 
+def partition(items, fractions: tuple[float, float, float], rng: random.Random,
+              group=None) -> dict[str, list]:
+    """Shuffle items into train/val/test by fractions.
+
+    With `group` (e.g. state), each group is split separately, so every
+    split gets suburbs from every state.
+    """
+    groups: dict = {}
+    for item in items:
+        groups.setdefault(group(item) if group else None, []).append(item)
+    out: dict[str, list] = {s: [] for s in SPLITS}
+    for key in sorted(groups, key=str):
+        members = groups[key]
+        rng.shuffle(members)
+        n_val = max(1, round(len(members) * fractions[1]))
+        n_test = max(1, round(len(members) * fractions[2]))
+        out["val"] += members[:n_val]
+        out["test"] += members[n_val:n_val + n_test]
+        out["train"] += members[n_val + n_test:]
+    return out
+
+
 def build(n_docs: dict[str, int], seed: int, negative_ratio: float,
           fractions: tuple[float, float, float]) -> tuple[dict[str, list[dict]], dict]:
     rng = random.Random(seed)
     pii_split = split_templates(PII_TEMPLATES, fractions, rng, require_labels=True)
     neg_split = split_templates(NEGATIVE_TEMPLATES, fractions, rng, require_labels=False)
 
+    # Held-out name and address vocabulary: same idea as the template split.
+    # Without it, every test name and suburb also appears in training and the
+    # model can memorise them. Street types (Street, Rd...) are a small closed
+    # set and are shared on purpose.
+    vocab_fracs = (0.7, 0.15, 0.15)
+    # Split the UNION of first and last names: some names are both
+    # (Thomas, Mitchell, Cooper). Splitting each list separately could put
+    # "Mitchell" in train as a first name and in test as a surname.
+    name_split = partition(sorted(set(FIRST_NAMES) | set(LAST_NAMES)), vocab_fracs, rng)
+    first_names = {s: [n for n in name_split[s] if n in FIRST_NAMES] for s in SPLITS}
+    last_names = {s: [n for n in name_split[s] if n in LAST_NAMES] for s in SPLITS}
+    suburbs = partition(list(SUBURBS), vocab_fracs, rng, group=lambda s: s[1])
+    streets = partition(list(STREET_NAMES), vocab_fracs, rng)
+
     renderer = Renderer(seed=seed)
     data: dict[str, list[dict]] = {}
     for split in SPLITS:
+        renderer.gen.first_names = first_names[split]
+        renderer.gen.last_names = last_names[split]
+        renderer.gen.suburbs = suburbs[split]
+        renderer.gen.street_names = streets[split]
         docs = []
         for i in range(n_docs[split]):
             pool = neg_split[split] if renderer.rng.random() < negative_ratio else pii_split[split]
@@ -75,6 +116,10 @@ def build(n_docs: dict[str, int], seed: int, negative_ratio: float,
         "template_fractions": dict(zip(SPLITS, fractions)),
         "documents": {s: len(data[s]) for s in SPLITS},
         "templates": {s: sorted(t.id for t in pii_split[s] + neg_split[s]) for s in SPLITS},
+        "first_names": {s: sorted(first_names[s]) for s in SPLITS},
+        "last_names": {s: sorted(last_names[s]) for s in SPLITS},
+        "suburbs": {s: sorted(f"{n} {st} {pc}" for n, st, pc in suburbs[s]) for s in SPLITS},
+        "street_names": {s: sorted(streets[s]) for s in SPLITS},
     }
     return data, manifest
 

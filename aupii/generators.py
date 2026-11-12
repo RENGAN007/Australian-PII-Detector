@@ -22,62 +22,232 @@ in the README that it is synthetic.
 from __future__ import annotations
 
 import random
+import re
+import unicodedata
 from datetime import date, timedelta
 from typing import Callable, Optional, Sequence
 
 from . import validators as v
 
 # ----------------------------------------------------------------------
-# Small vocabularies (extend these in Level 2 for more diversity)
+# Vocabularies. build_dataset.py splits names, suburbs and street names
+# 70/15/15 so val/test use values never seen in training.
 # ----------------------------------------------------------------------
 
+# Reflects Australia's mix: Anglo-Celtic, Chinese, Vietnamese, South Asian,
+# Middle Eastern, European, Korean/Japanese, Filipino, Pacific, African.
+# Month names (April, May, June) are left out on purpose: they would clash
+# with dates like "3 May 1990".
 FIRST_NAMES = (
+    # Anglo-Celtic / common Australian
     "Olivia", "Jack", "Charlotte", "Noah", "Amelia", "William", "Isla", "Oliver",
-    "Mia", "Lucas", "Priya", "Arjun", "Wei", "Mei", "Minh", "Linh", "Ahmed",
-    "Fatima", "Giorgos", "Eleni", "Marco", "Sofia", "Kiri", "Tane", "Aisha",
-    "Omar", "Hannah", "Liam", "Grace", "Ethan", "Chloe", "Ravi", "Anjali",
-    "Daniel", "Zara", "Hiroshi", "Yuki", "Mateo", "Lucia", "Kwame",
+    "Mia", "Lucas", "Hannah", "Liam", "Grace", "Ethan", "Chloe", "Daniel", "James",
+    "Thomas", "Henry", "Leo", "Harrison", "Archie", "Hudson", "Lachlan", "Cooper",
+    "Mitchell", "Bailey", "Jayden", "Riley", "Matilda", "Ava", "Ruby", "Sienna",
+    "Harper", "Evie", "Georgia", "Madison", "Emily", "Jessica", "Sarah", "Rebecca",
+    "Kylie", "Shane", "Darren", "Craig", "Bronwyn", "Sharon", "Gary", "Brett",
+    "Kerry", "Lauren", "Nathan", "Joshua", "Samuel", "Benjamin", "Isabella",
+    "Sophie", "Ella", "Lily", "Matthew", "Andrew", "Michelle", "Nicole", "Megan",
+    "Heather", "Douglas", "Fiona", "Duncan", "Callum", "Kate", "Jacinta", "Declan",
+    "Siobhan", "Ciaran", "Aoife", "Rhys", "Bethan", "Dylan", "Angus", "Hamish",
+    "Fergus", "Mackenzie",
+    # Chinese
+    "Wei", "Mei", "Jun", "Xiaoming", "Jian", "Yan", "Hui", "Ming", "Xin", "Hao",
+    "Jing", "Lei", "Ying", "Zhiwei", "Yuting", "Kai",
+    # Vietnamese
+    "Minh", "Linh", "Thanh", "Huong", "Duc", "Anh", "Tuan", "Trang", "Phuong",
+    "Hieu", "Quang", "Lan",
+    # South Asian
+    "Priya", "Arjun", "Ravi", "Anjali", "Rohan", "Aarav", "Ananya", "Vikram",
+    "Deepa", "Sanjay", "Lakshmi", "Karthik", "Divya", "Harpreet", "Gurpreet",
+    "Manpreet", "Navjot", "Rahul", "Sneha", "Meera", "Aditya", "Ishaan", "Kavya",
+    "Srinivas", "Venkatesh", "Nisha", "Pooja", "Imran", "Sadia", "Tharindu",
+    "Nuwan", "Dilani", "Kasun",
+    # Middle Eastern / Turkish / Persian
+    "Ahmed", "Fatima", "Omar", "Aisha", "Mohammed", "Yusuf", "Layla", "Zainab",
+    "Khalid", "Mariam", "Bilal", "Noor", "Elif", "Mehmet", "Emre", "Darius",
+    "Shirin", "Reza", "Leila", "Tariq",
+    # European
+    "Giorgos", "Eleni", "Nikos", "Dimitra", "Kostas", "Marco", "Sofia", "Giuseppe",
+    "Lucia", "Alessandro", "Francesca", "Matteo", "Chiara", "Mateo", "José",
+    "Carmen", "Pablo", "Inés", "Luca", "Stefan", "Katarina", "Marija", "Ivan",
+    "Petra", "Tomasz", "Agnieszka", "Jakub", "Lukas", "Anna", "Hans", "Ingrid",
+    "Lars", "Sven", "Renée", "Zoë",
+    # Korean / Japanese
+    "Hiroshi", "Yuki", "Haruto", "Sakura", "Kenji", "Aiko", "Ji-woo", "Min-jun",
+    "Seo-yeon", "Hyun", "Jae",
+    # Filipino
+    "Maricel", "Rodel", "Jericho", "Analyn", "Rowena", "Joy",
+    # Pacific / Māori
+    "Kiri", "Tane", "Aroha", "Manaia", "Sione", "Losa", "Tevita", "Mele",
+    # African
+    "Kwame", "Amara", "Chidi", "Ngozi", "Abebe", "Tsion", "Kofi", "Adaeze", "Sipho",
 )
 
 LAST_NAMES = (
-    "Smith", "Jones", "Williams", "Brown", "Wilson", "Taylor", "Nguyen", "Tran",
-    "Le", "Chen", "Wang", "Li", "Zhang", "Singh", "Kaur", "Patel", "Sharma",
-    "Kumar", "Papadopoulos", "Rossi", "Russo", "Ali", "Khan", "Hassan",
-    "Murphy", "O'Brien", "Kelly", "Anderson", "Thompson", "White", "Martin",
-    "Walker", "Harris", "Lee", "Kim", "Park", "Tanaka", "Garcia", "Mensah",
-    "Rahman",
+    # Anglo-Celtic
+    "Smith", "Jones", "Williams", "Brown", "Wilson", "Taylor", "Johnson", "White",
+    "Martin", "Anderson", "Thompson", "Walker", "Harris", "Clarke", "Robinson",
+    "Wright", "Thomas", "Mitchell", "Campbell", "Kelly", "Murphy", "O'Brien",
+    "O'Connor", "Ryan", "Sullivan", "McDonald", "MacKenzie", "Stewart", "Fraser",
+    "Morrison", "Hughes", "Evans", "Davies", "Roberts", "Edwards", "Hall", "Young",
+    "King", "Scott", "Green", "Baker", "Carter", "Turner", "Phillips", "Parker",
+    "Cooper", "Bennett", "Ward", "Watson", "Brooks", "Reid", "Hamilton", "Graham",
+    "Russell", "Gibson", "Ellis", "Price", "Webb", "Chapman", "Dawson", "Fletcher",
+    "Hayes", "Lawson", "Marshall", "Palmer", "Barnes", "Henderson", "Cunningham",
+    "Gallagher", "Doyle", "Fitzgerald", "Quinn", "Smith-Jones", "Ashworth-Hill",
+    # Vietnamese
+    "Nguyen", "Tran", "Le", "Pham", "Hoang", "Huynh", "Vo", "Dang", "Bui", "Do",
+    "Ngo", "Duong", "Truong", "Vu",
+    # Chinese (Mandarin and Cantonese romanisations)
+    "Chen", "Wang", "Li", "Zhang", "Liu", "Yang", "Huang", "Zhao", "Wu", "Zhou",
+    "Xu", "Sun", "Ma", "Zhu", "Hu", "Guo", "Lin", "He", "Luo", "Tan", "Lim", "Ng",
+    "Wong", "Chan", "Cheung", "Lau", "Leung", "Ho", "Yip", "Tang",
+    # Korean / Japanese
+    "Kim", "Lee", "Park", "Choi", "Jung", "Kang", "Cho", "Yoon", "Tanaka",
+    "Suzuki", "Sato", "Watanabe", "Yamamoto", "Nakamura", "Kobayashi",
+    # South Asian
+    "Singh", "Kaur", "Patel", "Sharma", "Kumar", "Gupta", "Shah", "Mehta", "Reddy",
+    "Rao", "Iyer", "Nair", "Menon", "Pillai", "Krishnan", "Subramaniam",
+    "Chowdhury", "Rahman", "Hossain", "Malik", "Qureshi", "Siddiqui", "Perera",
+    "Fernando", "De Silva", "Jayasuriya", "Wickramasinghe", "Gill", "Sandhu",
+    "Dhillon", "Grewal", "Bose", "Banerjee", "Das",
+    # Middle Eastern / Turkish / Persian
+    "Khan", "Ali", "Hassan", "Hussein", "Ibrahim", "Haddad", "Khoury", "Nasser",
+    "Saleh", "Mansour", "Karimi", "Hosseini", "Yilmaz", "Demir", "Kaya", "Abdullah",
+    # European
+    "Papadopoulos", "Georgiou", "Nikolaidis", "Konstantinou", "Rossi", "Russo",
+    "Ferrari", "Esposito", "Romano", "Bianchi", "Di Stefano", "De Luca", "Costa",
+    "Garcia", "Rodriguez", "Martinez", "Lopez", "Fernandez", "Silva", "Santos",
+    "Oliveira", "Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Novak",
+    "Kowalski", "Nowak", "Horvat", "Petrovic", "Jovanovic", "Kovac", "Ivanov",
+    "Popescu", "Van der Merwe", "Van Dijk", "De Jong", "Jansen", "Nielsen",
+    "Hansen", "Andersson", "Lindqvist",
+    # Filipino
+    "Reyes", "Cruz", "Bautista", "Dela Cruz", "Mendoza", "Villanueva", "Ramos",
+    "Aquino",
+    # African
+    "Mensah", "Okafor", "Adeyemi", "Mwangi", "Otieno", "Tesfaye", "Bekele",
+    "Dlamini", "Nkosi", "Boateng", "Osei",
+    # Pacific
+    "Tupou", "Fifita", "Faleolo", "Ngata", "Taufa", "Leota",
 )
+
+
+def email_part(name: str) -> str:
+    """'Van der Merwe' -> 'vandermerwe', 'Zoë' -> 'zoe', "O'Brien" -> 'obrien'.
+
+    Emails are almost always plain ASCII letters, so strip accents
+    (NFKD splits 'ë' into 'e' + a combining mark, which we drop), then
+    spaces, hyphens and apostrophes.
+    """
+    ascii_only = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z]", "", ascii_only.lower())
 
 EMAIL_DOMAINS = (
     "gmail.com", "outlook.com", "hotmail.com", "yahoo.com.au", "bigpond.com",
     "icloud.com", "example.com", "example.org",
 )
 
-# (suburb, state, postcode) - real suburb/postcode pairs.
+# (suburb, state, postcode) - real suburb/postcode pairs, all 8 states and
+# territories, cities and regional towns. build_dataset.py gives each split
+# its own subset, so val/test addresses use suburbs never seen in training.
 SUBURBS = (
-    ("Melbourne", "VIC", "3000"), ("Richmond", "VIC", "3121"),
-    ("Fitzroy", "VIC", "3065"), ("Box Hill", "VIC", "3128"),
-    ("Geelong", "VIC", "3220"), ("Sydney", "NSW", "2000"),
-    ("Parramatta", "NSW", "2150"), ("Bondi", "NSW", "2026"),
-    ("Newtown", "NSW", "2042"), ("Brisbane City", "QLD", "4000"),
-    ("Southport", "QLD", "4215"), ("Toowong", "QLD", "4066"),
-    ("Adelaide", "SA", "5000"), ("Glenelg", "SA", "5045"),
-    ("Perth", "WA", "6000"), ("Fremantle", "WA", "6160"),
-    ("Hobart", "TAS", "7000"), ("Launceston", "TAS", "7250"),
-    ("Darwin", "NT", "0800"), ("Belconnen", "ACT", "2617"),
+    # VIC
+    ("Melbourne", "VIC", "3000"), ("Carlton", "VIC", "3053"), ("Fitzroy", "VIC", "3065"),
+    ("Collingwood", "VIC", "3066"), ("Richmond", "VIC", "3121"), ("Hawthorn", "VIC", "3122"),
+    ("Kew", "VIC", "3101"), ("Box Hill", "VIC", "3128"), ("Doncaster", "VIC", "3108"),
+    ("Footscray", "VIC", "3011"), ("Sunshine", "VIC", "3020"), ("St Kilda", "VIC", "3182"),
+    ("Brighton", "VIC", "3186"), ("Prahran", "VIC", "3181"), ("South Yarra", "VIC", "3141"),
+    ("Toorak", "VIC", "3142"), ("Glen Waverley", "VIC", "3150"), ("Clayton", "VIC", "3168"),
+    ("Dandenong", "VIC", "3175"), ("Frankston", "VIC", "3199"), ("Cranbourne", "VIC", "3977"),
+    ("Berwick", "VIC", "3806"), ("Pakenham", "VIC", "3810"), ("Werribee", "VIC", "3030"),
+    ("Point Cook", "VIC", "3030"), ("Craigieburn", "VIC", "3064"), ("Epping", "VIC", "3076"),
+    ("Reservoir", "VIC", "3073"), ("Preston", "VIC", "3072"), ("Brunswick", "VIC", "3056"),
+    ("Coburg", "VIC", "3058"), ("Essendon", "VIC", "3040"), ("Northcote", "VIC", "3070"),
+    ("Williamstown", "VIC", "3016"), ("Ringwood", "VIC", "3134"), ("Bundoora", "VIC", "3083"),
+    ("Mount Waverley", "VIC", "3149"), ("Caulfield", "VIC", "3162"), ("Melton", "VIC", "3337"),
+    ("Sunbury", "VIC", "3429"), ("Geelong", "VIC", "3220"), ("Ballarat", "VIC", "3350"),
+    ("Bendigo", "VIC", "3550"), ("Mildura", "VIC", "3500"), ("Shepparton", "VIC", "3630"),
+    ("Warrnambool", "VIC", "3280"), ("Traralgon", "VIC", "3844"),
+    # NSW
+    ("Sydney", "NSW", "2000"), ("Surry Hills", "NSW", "2010"), ("Newtown", "NSW", "2042"),
+    ("Bondi", "NSW", "2026"), ("Bondi Junction", "NSW", "2022"), ("Manly", "NSW", "2095"),
+    ("Chatswood", "NSW", "2067"), ("Parramatta", "NSW", "2150"), ("Blacktown", "NSW", "2148"),
+    ("Penrith", "NSW", "2750"), ("Liverpool", "NSW", "2170"), ("Bankstown", "NSW", "2200"),
+    ("Hurstville", "NSW", "2220"), ("Cronulla", "NSW", "2230"), ("Ryde", "NSW", "2112"),
+    ("Hornsby", "NSW", "2077"), ("Castle Hill", "NSW", "2154"), ("Strathfield", "NSW", "2135"),
+    ("Burwood", "NSW", "2134"), ("Marrickville", "NSW", "2204"), ("Randwick", "NSW", "2031"),
+    ("Mosman", "NSW", "2088"), ("Campbelltown", "NSW", "2560"), ("Wollongong", "NSW", "2500"),
+    ("Newcastle", "NSW", "2300"), ("Gosford", "NSW", "2250"), ("Wagga Wagga", "NSW", "2650"),
+    ("Albury", "NSW", "2640"), ("Dubbo", "NSW", "2830"), ("Tamworth", "NSW", "2340"),
+    ("Orange", "NSW", "2800"), ("Bathurst", "NSW", "2795"), ("Coffs Harbour", "NSW", "2450"),
+    ("Port Macquarie", "NSW", "2444"), ("Lismore", "NSW", "2480"), ("Queanbeyan", "NSW", "2620"),
+    # QLD
+    ("Brisbane City", "QLD", "4000"), ("Fortitude Valley", "QLD", "4006"),
+    ("South Brisbane", "QLD", "4101"), ("West End", "QLD", "4101"), ("Toowong", "QLD", "4066"),
+    ("Indooroopilly", "QLD", "4068"), ("Chermside", "QLD", "4032"), ("Carindale", "QLD", "4152"),
+    ("Ipswich", "QLD", "4305"), ("Logan Central", "QLD", "4114"), ("Redcliffe", "QLD", "4020"),
+    ("Southport", "QLD", "4215"), ("Surfers Paradise", "QLD", "4217"), ("Robina", "QLD", "4226"),
+    ("Burleigh Heads", "QLD", "4220"), ("Maroochydore", "QLD", "4558"),
+    ("Noosa Heads", "QLD", "4567"), ("Caloundra", "QLD", "4551"), ("Toowoomba", "QLD", "4350"),
+    ("Cairns", "QLD", "4870"), ("Townsville", "QLD", "4810"), ("Mackay", "QLD", "4740"),
+    ("Rockhampton", "QLD", "4700"), ("Bundaberg", "QLD", "4670"), ("Hervey Bay", "QLD", "4655"),
+    ("Gladstone", "QLD", "4680"),
+    # SA
+    ("Adelaide", "SA", "5000"), ("North Adelaide", "SA", "5006"), ("Glenelg", "SA", "5045"),
+    ("Norwood", "SA", "5067"), ("Unley", "SA", "5061"), ("Prospect", "SA", "5082"),
+    ("Salisbury", "SA", "5108"), ("Elizabeth", "SA", "5112"), ("Modbury", "SA", "5092"),
+    ("Marion", "SA", "5043"), ("Port Adelaide", "SA", "5015"), ("Mount Barker", "SA", "5251"),
+    ("Mount Gambier", "SA", "5290"), ("Whyalla", "SA", "5600"), ("Port Augusta", "SA", "5700"),
+    ("Murray Bridge", "SA", "5253"),
+    # WA
+    ("Perth", "WA", "6000"), ("Northbridge", "WA", "6003"), ("Subiaco", "WA", "6008"),
+    ("Fremantle", "WA", "6160"), ("Cottesloe", "WA", "6011"), ("Scarborough", "WA", "6019"),
+    ("Joondalup", "WA", "6027"), ("Midland", "WA", "6056"), ("Armadale", "WA", "6112"),
+    ("Rockingham", "WA", "6168"), ("Mandurah", "WA", "6210"), ("Bunbury", "WA", "6230"),
+    ("Geraldton", "WA", "6530"), ("Kalgoorlie", "WA", "6430"), ("Albany", "WA", "6330"),
+    ("Broome", "WA", "6725"), ("Victoria Park", "WA", "6100"), ("Cannington", "WA", "6107"),
+    # TAS
+    ("Hobart", "TAS", "7000"), ("Sandy Bay", "TAS", "7005"), ("Battery Point", "TAS", "7004"),
+    ("Glenorchy", "TAS", "7010"), ("Kingston", "TAS", "7050"), ("Launceston", "TAS", "7250"),
+    ("Devonport", "TAS", "7310"), ("Burnie", "TAS", "7320"), ("Ulverstone", "TAS", "7315"),
+    # NT
+    ("Darwin", "NT", "0800"), ("Palmerston", "NT", "0830"), ("Casuarina", "NT", "0810"),
+    ("Nightcliff", "NT", "0810"), ("Alice Springs", "NT", "0870"), ("Katherine", "NT", "0850"),
+    # ACT
+    ("Canberra", "ACT", "2601"), ("Dickson", "ACT", "2602"), ("Griffith", "ACT", "2603"),
+    ("Kingston", "ACT", "2604"), ("Phillip", "ACT", "2606"), ("Braddon", "ACT", "2612"),
+    ("Turner", "ACT", "2612"), ("Belconnen", "ACT", "2617"), ("Greenway", "ACT", "2900"),
+    ("Gungahlin", "ACT", "2912"),
 )
 
 STREET_NAMES = (
     "High", "Church", "Station", "Victoria", "Park", "George", "King", "Queen",
     "Bridge", "Railway", "Albert", "Elizabeth", "Wattle", "Banksia", "Acacia",
-    "Hill", "Main", "Smith", "Ocean", "River",
+    "Hill", "Main", "Smith", "Ocean", "River", "Collins", "Bourke", "Flinders",
+    "Swanston", "Lonsdale", "Chapel", "Glenferrie", "Burke", "Canterbury", "Whitehorse",
+    "Pitt", "Oxford", "Crown", "Bay", "Beach", "Harbour", "Pacific", "Military",
+    "Anzac", "Federation", "Hume", "Murray", "Darling", "Lachlan", "Macquarie",
+    "Hunter", "Wellington", "Nelson", "Grey", "Stirling", "Hay", "Murray River",
+    "Grenfell", "Rundle", "Hindley", "Waymouth", "Gouger", "Ann", "Adelaide",
+    "Mary", "Margaret", "Charlotte", "Edward", "William", "Russell", "Spring",
+    "Lygon", "Brunswick", "Sydney", "Nicholson", "Hoddle", "Punt", "Toorak",
+    "Dandenong", "Warrigal", "Springvale", "Stud", "Blackburn", "Ferntree Gully",
+    "Boronia", "Grevillea", "Jacaranda", "Ironbark", "Bottlebrush", "Kurrajong",
+    "Myrtle", "Lilly Pilly", "Tea Tree", "Magpie", "Kookaburra", "Lyrebird",
+    "Bellbird", "Rosella", "Wombat", "Koala", "Echidna", "Platypus", "Cockatoo",
+    "Sunset", "Seaview", "Ridge", "Valley", "Forest", "Lakeside", "Highland",
+    "Settlers", "Pioneer", "Heritage", "Bluegum", "Riverside", "Mountain",
 )
 
 # (full, abbreviated)
 STREET_TYPES = (
     ("Street", "St"), ("Road", "Rd"), ("Avenue", "Ave"), ("Drive", "Dr"),
     ("Court", "Ct"), ("Place", "Pl"), ("Crescent", "Cres"), ("Lane", "Ln"),
-    ("Parade", "Pde"), ("Way", "Way"),
+    ("Parade", "Pde"), ("Way", "Way"), ("Boulevard", "Blvd"), ("Highway", "Hwy"),
+    ("Terrace", "Tce"), ("Close", "Cl"), ("Grove", "Gr"), ("Circuit", "Cct"),
+    ("Esplanade", "Esp"), ("Square", "Sq"), ("Rise", "Rise"), ("Track", "Trk"),
 )
 
 MONTHS = ("January", "February", "March", "April", "May", "June", "July",
@@ -136,6 +306,12 @@ class PIIGenerator:
 
     def __init__(self, seed: Optional[int] = None):
         self.rng = random.Random(seed)
+        # Name and address vocabularies. build_dataset.py swaps these per
+        # split so val/test use names, suburbs and streets never seen in training.
+        self.first_names: Sequence[str] = FIRST_NAMES
+        self.last_names: Sequence[str] = LAST_NAMES
+        self.suburbs: Sequence[tuple[str, str, str]] = SUBURBS
+        self.street_names: Sequence[str] = STREET_NAMES
 
     # ------------------------------------------------------------------
     # helpers
@@ -288,7 +464,7 @@ class PIIGenerator:
 
     def name_parts(self) -> tuple[str, str]:
         """A random (first, last) pair. Reuse it to keep a document consistent."""
-        return self.rng.choice(FIRST_NAMES), self.rng.choice(LAST_NAMES)
+        return self.rng.choice(self.first_names), self.rng.choice(self.last_names)
 
     def person_name(self, style: Optional[str] = None,
                     first: Optional[str] = None, last: Optional[str] = None) -> str:
@@ -307,8 +483,7 @@ class PIIGenerator:
         """Built from a name so it can match a PERSON in the same document."""
         if first is None or last is None:
             first, last = self.name_parts()
-        f = first.lower()
-        l = last.lower().replace("'", "")
+        f, l = email_part(first), email_part(last)
         local = self.rng.choice([f"{f}.{l}", f"{f}{l}", f"{f[0]}.{l}", f"{f}_{l}", f"{l}{f[0]}"])
         if self.rng.random() < 0.3:
             local += str(self.rng.randint(1, 99))
@@ -328,13 +503,17 @@ class PIIGenerator:
         """Styles: one_line '12 Smith Street, Richmond VIC 3121',
         multi_line (newline before suburb), comma '12 Smith St, Richmond, VIC, 3121'."""
         style = self._style(style, ("one_line", "one_line", "multi_line", "comma"))
-        suburb, state, postcode = self.rng.choice(SUBURBS)
+        suburb, state, postcode = self.rng.choice(self.suburbs)
         full, abbrev = self.rng.choice(STREET_TYPES)
         street_type = full if self.rng.random() < 0.6 else abbrev
-        street = f"{self.rng.randint(1, 250)} {self.rng.choice(STREET_NAMES)} {street_type}"
-        if self.rng.random() < 0.25:                                  # unit
+        number = str(self.rng.randint(1, 250))
+        if self.rng.random() < 0.08:                                  # 12A, 7B
+            number += self.rng.choice("ABC")
+        street = f"{number} {self.rng.choice(self.street_names)} {street_type}"
+        if self.rng.random() < 0.25:                                  # unit / level
             unit = self.rng.randint(1, 40)
-            street = f"Unit {unit}, {street}" if self.rng.random() < 0.5 else f"{unit}/{street}"
+            street = self.rng.choice([f"Unit {unit}, {street}", f"{unit}/{street}",
+                                      f"Apt {unit}, {street}", f"Level {unit % 20 + 1}, {street}"])
         if style == "one_line":
             return f"{street}, {suburb} {state} {postcode}"
         if style == "multi_line":

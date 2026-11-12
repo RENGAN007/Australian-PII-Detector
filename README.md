@@ -51,7 +51,7 @@ au-pii-detector/
 Run it (Python 3.10+, needs `pytest` and `pandas`):
 
 ```bash
-python -m pytest -q                 # 141 tests
+python -m pytest -q                 # 147 tests
 python level1_demo.py               # Level 1 samples and hard negatives
 python build_dataset.py             # Level 2: writes data/
 python dataset_stats.py --show 3    # counts, checks, 3 example documents
@@ -75,6 +75,8 @@ python prepare_data.py              # Level 3: writes data/processed/
 
 - **Record spans while building**, never search for them afterwards.
 - **Split by template**, so val/test measure generalisation to unseen wording.
+- **Hold out names, suburbs and streets per split**, so val/test PERSON and
+  ADDRESS entities use values never seen in training.
 - **Cue and no-cue templates**, so the model can't just learn "TFN:".
 - **Distractors and negative documents**: order IDs, invoice numbers, and
   lookalikes that fail *every* checksum (a fake TFN can be a valid ACN).

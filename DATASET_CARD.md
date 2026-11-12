@@ -34,6 +34,19 @@ JSONL, one document per line:
    letter-swap typos in template words (15% of documents).
 5. Templates, not documents, are split 60/20/20 into train/val/test, and
    every split is guaranteed to contain every label.
+6. Name and address vocabulary is held out per split (70/15/15):
+   - 232 first names and 251 surnames reflecting Australia's population mix,
+     including multi-word (`De Silva`, `Van der Merwe`), hyphenated
+     (`Ji-woo`, `Smith-Jones`) and accented (`José`, `Zoë`) names. The
+     *union* of both lists is split, so a name that is both a first name
+     and a surname (Thomas, Mitchell, Cooper) can't leak across splits.
+   - 168 real suburb/postcode pairs (all 8 states and territories, split
+     within each state) and 111 street names.
+
+   Result: 87% of name words and 39% of address words in test never appear
+   in training. The remaining address words are shared on purpose: street
+   types ("Street", "Rd"), "Unit", and state codes. The split is recorded
+   in `manifest.json`.
 
 Rebuild with `python build_dataset.py` (seed 13 by default).
 
@@ -59,10 +72,11 @@ Rebuild with `python build_dataset.py` (seed 13 by default).
   small sample of structures.
 - Label imbalance: PERSON and AU_PHONE are common; AU_DRIVER_LICENCE,
   AU_PASSPORT and AU_ACN are rarer in train.
-- **Small name and place vocabularies**: 40 first names, 40 surnames, 20
-  suburbs and 20 street names. Every PERSON and AU_ADDRESS token in val/test
-  also appears in train (0% out-of-vocabulary, found in Level 3), so a model
-  could memorise them and look better than it is. Expand these lists before
-  trusting PERSON/ADDRESS scores.
+- Names are still drawn from a few hundred hand-picked entries. Real
+  documents contain far more names, nicknames, and names in non-Latin
+  scripts.
+- Some names double as ordinary words or street names (Grace, Joy,
+  Charlotte Street). That ambiguity is realistic, but it means a small
+  share of test name words were seen in training in another role.
 - Driver licence and passport formats are approximate.
 - English only. No OCR-style noise on identifiers yet.
