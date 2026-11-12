@@ -59,5 +59,10 @@ Rebuild with `python build_dataset.py` (seed 13 by default).
   small sample of structures.
 - Label imbalance: PERSON and AU_PHONE are common; AU_DRIVER_LICENCE,
   AU_PASSPORT and AU_ACN are rarer in train.
+- **Small name and place vocabularies**: 40 first names, 40 surnames, 20
+  suburbs and 20 street names. Every PERSON and AU_ADDRESS token in val/test
+  also appears in train (0% out-of-vocabulary, found in Level 3), so a model
+  could memorise them and look better than it is. Expand these lists before
+  trusting PERSON/ADDRESS scores.
 - Driver licence and passport formats are approximate.
 - English only. No OCR-style noise on identifiers yet.

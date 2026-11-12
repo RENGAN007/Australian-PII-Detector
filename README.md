@@ -13,7 +13,7 @@ sensitive-looking and never present it as real.
 |---|---|---|
 | 1 | Domain knowledge and identifier rules | Done |
 | 2 | Synthetic data generation | Done |
-| 3 | Text preprocessing and annotation (BIO) | |
+| 3 | Text preprocessing and annotation (BIO) | Done |
 | 4 | Rule-based baseline | |
 | 5 | Classical ML baseline (CRF) | |
 | 6 | Neural NER (BiLSTM-CRF / spaCy) | |
@@ -30,14 +30,19 @@ au-pii-detector/
 │   ├── validators.py    # L1: format + checksum validators
 │   ├── generators.py    # L1: seeded generators, surface styles, hard negatives
 │   ├── templates.py     # L2: 37 PII + 10 negative document templates
-│   └── synth.py         # L2: renderer (records spans), distractors, noise
+│   ├── synth.py         # L2: renderer (records spans), distractors, noise
+│   ├── tokenizer.py     # L3: regex tokeniser with character offsets
+│   └── bio.py           # L3: spans <-> BIO, validation/repair, BIOES, windows
 ├── tests/
-│   ├── test_validators.py   # L1: hand-checked known examples
-│   ├── test_generators.py   # L1: property tests
-│   └── test_dataset.py      # L2: spans, leakage, coverage, unlabelled IDs
+│   ├── test_validators.py    # L1: hand-checked known examples
+│   ├── test_generators.py    # L1: property tests
+│   ├── test_dataset.py       # L2: spans, leakage, coverage, unlabelled IDs
+│   └── test_preprocessing.py # L3: offsets, round trips, edge cases, windows
 ├── data/                # L2 output: train/val/test.jsonl + manifest.json
+│   └── processed/       # L3 output: tokenised JSONL, CoNLL, labels.json
 ├── build_dataset.py     # L2: builds the dataset
 ├── dataset_stats.py     # L2: stats + sanity checks
+├── prepare_data.py      # L3: tokenise + BIO-tag, checks, OOV report
 ├── level1_demo.py
 ├── DATASET_CARD.md
 └── pyproject.toml
@@ -46,11 +51,25 @@ au-pii-detector/
 Run it (Python 3.10+, needs `pytest` and `pandas`):
 
 ```bash
-python -m pytest -q                 # 113 tests
+python -m pytest -q                 # 141 tests
 python level1_demo.py               # Level 1 samples and hard negatives
 python build_dataset.py             # Level 2: writes data/
 python dataset_stats.py --show 3    # counts, checks, 3 example documents
+python prepare_data.py              # Level 3: writes data/processed/
 ```
+
+## Level 3 key ideas
+
+- **Identifiers span several tokens** (`+`, `61`, `412`, `345`, `678`); BIO
+  tags (`B-AU_PHONE I-AU_PHONE ...`) group them. 13 labels -> 27 tags.
+- **Keep offsets, never edit the text**: normalisation (NFKC) lives on
+  `Token.norm`, so every prediction maps back to the original characters.
+- **Misalignments are reported, not lost** (`strict` drops, `expand` widens).
+  The current dataset has none.
+- **Exact round trip** spans -> BIO -> spans over every document.
+- **Lenient decoding**: a stray `I-X` starts a new entity, as seqeval does.
+- Documents are short (max 72 tokens), so no windowing is needed yet;
+  `windows()` is ready for transformers in Level 7.
 
 ## Level 2 key ideas
 
