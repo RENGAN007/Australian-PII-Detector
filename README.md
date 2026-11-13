@@ -14,7 +14,7 @@ sensitive-looking and never present it as real.
 | 1 | Domain knowledge and identifier rules | Done |
 | 2 | Synthetic data generation | Done |
 | 3 | Text preprocessing and annotation (BIO) | Done |
-| 4 | Rule-based baseline | |
+| 4 | Rule-based baseline | Done (test micro F1 0.951, macro 0.912) |
 | 5 | Classical ML baseline (CRF) | |
 | 6 | Neural NER (BiLSTM-CRF / spaCy) | |
 | 7 | Transformer fine-tuning | |
@@ -32,17 +32,23 @@ au-pii-detector/
 │   ├── templates.py     # L2: 37 PII + 10 negative document templates
 │   ├── synth.py         # L2: renderer (records spans), distractors, noise
 │   ├── tokenizer.py     # L3: regex tokeniser with character offsets
-│   └── bio.py           # L3: spans <-> BIO, validation/repair, BIOES, windows
+│   ├── bio.py           # L3: spans <-> BIO, validation/repair, BIOES, windows
+│   ├── evaluate.py      # L4: entity-level P/R/F1 (strict + relaxed), used by every model
+│   └── rules.py         # L4: rule recognisers, cue scoring, RuleDetector
 ├── tests/
 │   ├── test_validators.py    # L1: hand-checked known examples
 │   ├── test_generators.py    # L1: property tests
 │   ├── test_dataset.py       # L2: spans, leakage, coverage, unlabelled IDs
-│   └── test_preprocessing.py # L3: offsets, round trips, edge cases, windows
+│   ├── test_preprocessing.py # L3: offsets, round trips, edge cases, windows
+│   ├── test_evaluate.py      # L4: metrics vs hand-worked examples
+│   └── test_rules.py         # L4: each recogniser on tricky strings
 ├── data/                # L2 output: train/val/test.jsonl + manifest.json
 │   └── processed/       # L3 output: tokenised JSONL, CoNLL, labels.json
+├── results/             # L4+: thresholds and scores per model and split
 ├── build_dataset.py     # L2: builds the dataset
 ├── dataset_stats.py     # L2: stats + sanity checks
 ├── prepare_data.py      # L3: tokenise + BIO-tag, checks, OOV report
+├── run_rules.py         # L4: tune on val, score on test, error analysis
 ├── level1_demo.py
 ├── DATASET_CARD.md
 └── pyproject.toml
@@ -51,12 +57,44 @@ au-pii-detector/
 Run it (Python 3.10+, needs `pytest` and `pandas`):
 
 ```bash
-python -m pytest -q                 # 147 tests
+python -m pytest -q                 # 188 tests
 python level1_demo.py               # Level 1 samples and hard negatives
 python build_dataset.py             # Level 2: writes data/
 python dataset_stats.py --show 3    # counts, checks, 3 example documents
 python prepare_data.py              # Level 3: writes data/processed/
+python run_rules.py                 # Level 4: tune on val, report test
+python run_rules.py --explain val-000123   # why each candidate was kept/dropped
 ```
+
+## Level 4 results (rule baseline, test set, strict)
+
+| | P | R | F1 |
+|---|---|---|---|
+| micro avg | 0.970 | 0.933 | **0.951** |
+| macro F1 | | | **0.912** |
+
+Weak spots, which are exactly what the ML levels need to fix:
+
+- **AU_ACN: F1 0.00.** All test ACNs come from one template with no cue word
+  (`Registered: <company> - <ACN> - <address>`). Adding "registered" as a cue
+  would fix it, but that was learned from *test* errors, so it is
+  deliberately left out: fixing it would turn the test set into a tuning set.
+- **PERSON: F1 0.87.** The gazetteer only holds train names, test names are
+  held out, and capitalisation rules break on all-caps or lower-case text
+  and on company names.
+- Most other labels score ~1.00 because the data is templated. Treat that as
+  an upper bound, not as real-world performance.
+
+## Level 4 key ideas
+
+- **One interface for every model**: `detect(text) -> [{start, end, label}]`,
+  scored by the same `evaluate.py`.
+- **Candidates -> validate -> score -> threshold -> resolve overlaps.**
+- **Context scoring**: own cue nearby (+), nearest cue is a negative cue like
+  "invoice" (-), nearest cue belongs to another label (-), BSB+account pair (+).
+- **Fuzzy cues** with edit distance, so "Mdeicare" still counts.
+- **Thresholds tuned on val only**, taking the middle of any tied range.
+- **Strict vs relaxed F1** separates boundary errors from real misses.
 
 ## Level 3 key ideas
 
